@@ -25,6 +25,12 @@ Object.entries(designCategories).forEach(([category, files]) => {
     card.innerHTML = isVideo
       ? `<video src="${path}" muted loop autoplay playsinline></video><span>${file.replace(/\.[^.]+$/, "")}</span>`
       : `<img src="${path}" alt="${file.replace(/\.[^.]+$/, "")}"><span>${file.replace(/\.[^.]+$/, "")}</span>`;
+    const media = card.querySelector("img, video");
+    if (isVideo) media.preload = "metadata";
+    else {
+      media.loading = "lazy";
+      media.decoding = "async";
+    }
     grid.append(card);
   });
   gallery.append(section);

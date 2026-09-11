@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
+const loadingStartedAt = performance.now();
+const loadingMinimumTime = 450;
+function finishLoading() {
+  const wait = Math.max(0, loadingMinimumTime - (performance.now() - loadingStartedAt));
+  setTimeout(() => document.body.classList.remove("app-loading"), wait);
+}
+
 const canvas = document.querySelector("#space-canvas");
 const selectedPlanet = document.querySelector("#selected-planet");
 const labels = {
@@ -29,15 +36,31 @@ scene.fog = new THREE.FogExp2(0x080b18, 0.035);
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 100);
 camera.position.set(0, 0.4, 8);
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const isLowPowerDevice = navigator.hardwareConcurrency <= 4 || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+const isMobile = matchMedia("(max-width: 760px)").matches;
+let renderer;
+let webglAvailable = true;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: !isLowPowerDevice, alpha: true, powerPreference: "high-performance" });
+} catch (error) {
+  console.error("WebGL is unavailable; showing the page without 3D rendering.", error);
+  document.body.classList.add("webgl-unavailable");
+  webglAvailable = false;
+  renderer = {
+    setPixelRatio() {},
+    setSize() {},
+    render() {},
+  };
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio, isLowPowerDevice ? 1.25 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 
 const starsGeometry = new THREE.BufferGeometry();
-const starPositions = new Float32Array(1800 * 3);
+const starCount = isLowPowerDevice ? 1000 : 1400;
+const starPositions = new Float32Array(starCount * 3);
 for (let i = 0; i < starPositions.length; i += 3) {
   const radius = 4 + Math.random() * 16;
   const theta = Math.random() * Math.PI * 2;
@@ -51,13 +74,17 @@ const starTextureCanvas = document.createElement("canvas");
 starTextureCanvas.width = 32;
 starTextureCanvas.height = 32;
 const starTextureContext = starTextureCanvas.getContext("2d");
-const starGradient = starTextureContext.createRadialGradient(16, 16, 0, 16, 16, 16);
-starGradient.addColorStop(0, "rgba(255,255,255,1)");
-starGradient.addColorStop(0.25, "rgba(220,230,255,0.9)");
-starGradient.addColorStop(0.65, "rgba(180,200,255,0.22)");
-starGradient.addColorStop(1, "rgba(180,200,255,0)");
-starTextureContext.fillStyle = starGradient;
-starTextureContext.fillRect(0, 0, 32, 32);
+if (starTextureContext) {
+  const starGradient = starTextureContext.createRadialGradient(16, 16, 0, 16, 16, 16);
+  starGradient.addColorStop(0, "rgba(255,255,255,1)");
+  starGradient.addColorStop(0.25, "rgba(220,230,255,0.9)");
+  starGradient.addColorStop(0.65, "rgba(180,200,255,0.22)");
+  starGradient.addColorStop(1, "rgba(180,200,255,0)");
+  starTextureContext.fillStyle = starGradient;
+  starTextureContext.fillRect(0, 0, 32, 32);
+} else {
+  console.error("Could not create the star texture.");
+}
 const starTexture = new THREE.CanvasTexture(starTextureCanvas);
 const stars = new THREE.Points(
   starsGeometry,
@@ -75,7 +102,7 @@ scene.add(stars);
 const assets = new THREE.Group();
 assets.position.y = -3.6;
 assets.position.set(0, -1.7, 0);
-assets.scale.setScalar(0.78);
+assets.scale.setScalar(isMobile ? 0.62 : 0.78);
 scene.add(assets);
 const assetFiles = [
   "Планета36.glb",
@@ -123,8 +150,8 @@ const orbitMaterial = new THREE.LineBasicMaterial({
 });
 orbitRadii.slice(0, -1).forEach((radius) => {
   const points = [];
-  for (let i = 0; i <= 96; i += 1) {
-    const angle = (i / 96) * Math.PI * 2;
+  for (let i = 0; i <= 64; i += 1) {
+    const angle = (i / 64) * Math.PI * 2;
     points.push(new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, -1.8));
   }
   const orbit = new THREE.Line(
@@ -133,13 +160,13 @@ orbitRadii.slice(0, -1).forEach((radius) => {
   );
   assets.add(orbit);
 });
-assetFiles.forEach((file, index) => {
-  loader.load(`./3d/${encodeURIComponent(file)}`, (gltf) => {
+function addAsset(file, index) {
+  return loader.loadAsync(`./3d/${encodeURIComponent(file)}`).then((gltf) => {
     const model = gltf.scene;
     const bounds = new THREE.Box3().setFromObject(model);
     const size = bounds.getSize(new THREE.Vector3());
     const largestSide = Math.max(size.x, size.y, size.z);
-    const targetSize = file === "Sun.glb" ? 2.2 : file === "saturn.glb" ? 1.1 : file === "Jupiter.glb" ? 1.25 : file === "Moon.glb" ? 0.55 : 0.65;
+      const targetSize = (file === "Sun.glb" ? 2.2 : file === "saturn.glb" ? 1.1 : file === "Jupiter.glb" ? 1.25 : file === "Moon.glb" ? 0.55 : 0.65) * (isMobile ? 0.82 : 1);
     model.scale.setScalar(targetSize / largestSide);
     const radius = orbitRadii[index];
     const phase = index * 0.92;
@@ -155,10 +182,23 @@ assetFiles.forEach((file, index) => {
     model.userData.planetName = file.replace(".glb", "").replace("earth-00", "Earth");
     model.userData.destination = pageDestinations[file] || fallbackDestinations[index % fallbackDestinations.length];
     loadedAssets.push({ model, index, radius, phase, label: labelByFile[file] });
-  }, undefined, (error) => {
+  }).catch((error) => {
     console.error(`Could not load 3D asset: ${file}`, error);
   });
-});
+}
+const currentFile = Object.entries(pageDestinations).find(([, [, url]]) => url === `./${location.pathname.split("/").pop()}`)?.[0];
+const prioritizedFiles = ["Sun.glb", currentFile].filter(Boolean);
+const remainingFiles = assetFiles.filter((file) => !prioritizedFiles.includes(file));
+async function loadAssets(files) {
+  if (!webglAvailable) return;
+  for (let i = 0; i < files.length; i += 1) {
+    await addAsset(files[i], assetFiles.indexOf(files[i]));
+  }
+}
+loadAssets(prioritizedFiles)
+  .then(() => loadAssets(remainingFiles))
+  .then(finishLoading);
+if (!webglAvailable) finishLoading();
 scene.add(new THREE.HemisphereLight(0x9aaeff, 0x130e24, 2.8));
 const keyLight = new THREE.DirectionalLight(0xffd2af, 4);
 keyLight.position.set(3, 5, 5);
@@ -197,9 +237,21 @@ addEventListener("resize", () => {
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
+if (canvas) {
+  canvas.addEventListener("webglcontextlost", (event) => {
+    event.preventDefault();
+    document.body.classList.add("webgl-unavailable");
+    cancelAnimationFrame(animationFrame);
+  });
+  canvas.addEventListener("webglcontextrestored", () => {
+    document.body.classList.remove("webgl-unavailable");
+    animationFrame = requestAnimationFrame(animate);
+  });
+}
 
 const clock = new THREE.Clock();
 const labelWorldPosition = new THREE.Vector3();
+let animationFrame = 0;
 function positionLabel(model, label) {
   if (!label) return;
   model.getWorldPosition(labelWorldPosition);
@@ -233,6 +285,14 @@ function animate() {
   camera.position.z += (9.4 - camera.position.z) * 0.018;
   camera.lookAt(0, 0.35, -1);
   renderer.render(scene, camera);
-  requestAnimationFrame(animate);
+  animationFrame = requestAnimationFrame(animate);
 }
 animate();
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    cancelAnimationFrame(animationFrame);
+    return;
+  }
+  clock.start();
+  animationFrame = requestAnimationFrame(animate);
+});
