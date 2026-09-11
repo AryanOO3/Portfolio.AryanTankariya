@@ -1,15 +1,12 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-const loadingStartedAt = performance.now();
-const loadingMinimumTime = 450;
-const loadingFallback = setTimeout(() => document.body.classList.remove("app-loading"), 4000);
 function finishLoading() {
-  const wait = Math.max(0, loadingMinimumTime - (performance.now() - loadingStartedAt));
-  setTimeout(() => {
-    clearTimeout(loadingFallback);
-    document.body.classList.remove("app-loading");
-  }, wait);
+  if (typeof window.finishPortfolioLoading === "function") {
+    window.finishPortfolioLoading();
+    return;
+  }
+  document.body.classList.remove("app-loading");
 }
 
 const canvas = document.querySelector("#space-canvas");
