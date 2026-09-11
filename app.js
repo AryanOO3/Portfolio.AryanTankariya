@@ -104,7 +104,6 @@ const stars = new THREE.Points(
 scene.add(stars);
 
 const assets = new THREE.Group();
-assets.position.y = -3.6;
 assets.position.set(0, -1.7, 0);
 assets.scale.setScalar(isMobile ? 0.62 : 0.78);
 scene.add(assets);
