@@ -3,9 +3,13 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const loadingStartedAt = performance.now();
 const loadingMinimumTime = 450;
+const loadingFallback = setTimeout(() => document.body.classList.remove("app-loading"), 4000);
 function finishLoading() {
   const wait = Math.max(0, loadingMinimumTime - (performance.now() - loadingStartedAt));
-  setTimeout(() => document.body.classList.remove("app-loading"), wait);
+  setTimeout(() => {
+    clearTimeout(loadingFallback);
+    document.body.classList.remove("app-loading");
+  }, wait);
 }
 
 const canvas = document.querySelector("#space-canvas");
@@ -26,7 +30,7 @@ const themedPageNames = {
 };
 const pageName = themedPageNames[location.pathname.split("/").pop()];
 if (pageName) {
-  document.title = `${pageName[0]} // Orbit`;
+  document.title = `${pageName[0]} // Aryan Tankariya`;
   const pageMarker = document.querySelector(".page-top > span");
   if (pageMarker) pageMarker.textContent = pageName[1];
 }
@@ -195,9 +199,12 @@ async function loadAssets(files) {
     await addAsset(files[i], assetFiles.indexOf(files[i]));
   }
 }
-loadAssets(prioritizedFiles)
-  .then(() => loadAssets(remainingFiles))
-  .then(finishLoading);
+loadAssets(prioritizedFiles).then(() => {
+  finishLoading();
+  const loadRemaining = () => loadAssets(remainingFiles);
+  if ("requestIdleCallback" in window) requestIdleCallback(loadRemaining, { timeout: 1800 });
+  else setTimeout(loadRemaining, 300);
+});
 if (!webglAvailable) finishLoading();
 scene.add(new THREE.HemisphereLight(0x9aaeff, 0x130e24, 2.8));
 const keyLight = new THREE.DirectionalLight(0xffd2af, 4);
